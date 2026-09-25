@@ -1,0 +1,99 @@
+name: Woven images from v1.7.4 baseline
+
+on:
+  push:
+    branches: [feat/woven-v1.7.4]
+    paths:
+      - .github/workflows/woven-images.yml
+      - docker/**
+      - services/**
+      - web/**
+      - query/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - {image: terrapod-api, dockerfile: docker/Dockerfile.api, query: true}
+          - {image: terrapod-web, dockerfile: docker/Dockerfile.web, query: false}
+          - {image: terrapod-listener, dockerfile: docker/Dockerfile.listener, query: false}
+          - {image: terrapod-runner, dockerfile: docker/Dockerfile.runner, query: true}
+          - {image: terrapod-migrations, dockerfile: docker/Dockerfile.migrations, query: false}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.query
+        with:
+          go-version-file: query/go.mod
+          cache: false
+      - name: Build terrapod-query for API and runner images
+        if: matrix.query
+        run: |
+          mkdir -p docker/query-bin
+          (cd query && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags '-s -w' -o ../docker/query-bin/terrapod-query ./cmd/terrapod-query)
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish one source revision
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/arustydev/${{ matrix.image }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/aRustyDev/terrapod
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/arustydev/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve and record immutable digest references
+        run: |
+          jq -n --arg sourceRevision "$GITHUB_SHA" '{sourceRevision:$sourceRevision,images:{}}' > images.json
+          for image in api web listener runner migrations; do
+            ref="ghcr.io/arustydev/terrapod-$image:sha-$GITHUB_SHA"
+            digest=$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')
+            test -n "$digest"
+            jq --arg image "$image" --arg ref "ghcr.io/arustydev/terrapod-$image@$digest" '.images[$image]=$ref' images.json > images.next.json
+            mv images.next.json images.json
+          done
+          jq -e '.images | length == 5' images.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: woven-images-${{ github.sha }}
+          path: images.json
+          retention-days: 90

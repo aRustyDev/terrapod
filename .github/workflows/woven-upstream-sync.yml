@@ -1,0 +1,38 @@
+name: Compare Woven fork with upstream
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Compare immutable upstream revisions
+        id: compare
+        run: |
+          git remote add upstream https://github.com/mattrobinsonsre/terrapod.git
+          git fetch upstream main --no-tags
+          behind=$(git rev-list --count HEAD..upstream/main)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
+      - name: Open a reviewed sync PR
+        if: steps.compare.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_SHA: ${{ steps.compare.outputs.upstream }}
+        run: |
+          branch="sync/upstream-${UPSTREAM_SHA:0:12}"
+          git switch -c "$branch"
+          git merge --no-commit --no-ff upstream/main || { git merge --abort; exit 1; }
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "sync upstream $UPSTREAM_SHA"
+          git push origin "$branch"
+          gh pr create --draft --base main --head "$branch" --title "Review upstream TerraPod $UPSTREAM_SHA" --body "Automated upstream comparison. Review application changes, image build inputs, and chart compatibility before merging."
