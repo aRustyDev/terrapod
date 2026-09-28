@@ -229,14 +229,14 @@ def _column_python_type(column_type: Any) -> type | None:
     one that needs coercion, so "don't know" and "nothing to do" are the same
     answer here, and refusing to guess is safe.
 
-    SQLAlchemy's base `TypeEngine.python_type` *raises* rather than returning
-    None, and `TypeDecorator` does not forward the call to its impl. Letting
-    that propagate would take replication down on any custom column type — the
-    first one being `EncryptedText`, i.e. precisely when a credential is in
-    flight.
+    Depending on SQLAlchemy version, the base `TypeEngine.python_type` raises
+    or returns `object`. Neither identifies a type that needs coercion.
+    `TypeDecorator` does not always forward the call to its impl. Letting an
+    exception propagate would take replication down on a custom column type.
     """
     try:
-        return column_type.python_type  # type: ignore[no-any-return]
+        python_type = column_type.python_type
+        return None if python_type is object else python_type
     except NotImplementedError:
         return None
 

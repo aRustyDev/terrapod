@@ -6,8 +6,10 @@ Follows the same lifecycle pattern as db/session.py.
 """
 
 from collections.abc import AsyncGenerator
+from urllib.parse import unquote, urlsplit
 
 import redis.asyncio as aioredis
+from redis.asyncio.sentinel import Sentinel
 from terrapod.config import settings
 from terrapod.logging_config import get_logger
 
@@ -15,6 +17,62 @@ logger = get_logger(__name__)
 
 # Module-level client reference, initialized in lifespan
 _redis: aioredis.Redis | None = None
+
+
+def _sentinel_addresses(hosts: list[str]) -> list[tuple[str, int]]:
+    """Parse explicit host:port endpoints without accepting credentials or paths."""
+    addresses = []
+    for address in hosts:
+        try:
+            parsed = urlsplit(f"//{address}")
+            if (
+                parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or not parsed.hostname
+                or parsed.port is None
+                or not 1 <= parsed.port <= 65535
+            ):
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError("redis.sentinel_hosts entries must be host:port") from exc
+        addresses.append((parsed.hostname, parsed.port))
+    return addresses
+
+
+def _sentinel_client(
+    url: str, hosts: list[str], service_name: str, sentinel_auth: bool
+) -> aioredis.Redis:
+    """Build a write client that discovers the current primary through Sentinel."""
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("redis", "rediss") or parsed.query or parsed.fragment:
+        raise ValueError("Sentinel mode requires a redis:// or rediss:// URL without query options")
+    try:
+        db = int(parsed.path.lstrip("/")) if parsed.path not in ("", "/") else 0
+    except ValueError as exc:
+        raise ValueError("Sentinel mode requires a numeric Redis database") from exc
+    if db < 0:
+        raise ValueError("Sentinel mode requires a nonnegative Redis database")
+    password = unquote(parsed.password) if parsed.password is not None else None
+    if sentinel_auth and not password:
+        raise ValueError("redis.sentinel_auth requires a password in redis_url")
+    sentinel_kwargs: dict[str, int | str] = {"socket_timeout": 2}
+    if sentinel_auth:
+        sentinel_kwargs["password"] = password
+    sentinel = Sentinel(
+        _sentinel_addresses(hosts),
+        sentinel_kwargs=sentinel_kwargs,
+        socket_timeout=5,
+        socket_connect_timeout=2,
+        username=unquote(parsed.username) if parsed.username is not None else None,
+        password=password,
+        db=db,
+        ssl=parsed.scheme == "rediss",
+        decode_responses=True,
+    )
+    return sentinel.master_for(service_name)
 
 
 async def init_redis() -> None:
@@ -55,6 +113,14 @@ async def init_redis() -> None:
             mode=redis_cfg.auth_mode,
             user=redis_cfg.username,
         )
+    elif redis_cfg.sentinel_hosts:
+        _redis = _sentinel_client(
+            str(settings.redis_url),
+            redis_cfg.sentinel_hosts,
+            redis_cfg.sentinel_service_name,
+            redis_cfg.sentinel_auth,
+        )
+        logger.info("Redis connection: Sentinel primary", service=redis_cfg.sentinel_service_name)
     else:
         _redis = aioredis.from_url(
             str(settings.redis_url),

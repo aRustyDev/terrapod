@@ -1488,6 +1488,19 @@ jobs:
           echo "$stock" | grep -q "priorityClassName:" && { echo "FAIL: priorityClassName set by default"; exit 1; }
           echo "control-plane PriorityClasses render OK and are off by default (#751)"
 
+      - name: Sentinel client configuration reaches the API ConfigMap
+        run: |
+          rendered=$(docker run --rm -v "$PWD:/chart" -w /chart "${HELM_IMAGE:-alpine/helm:3.17.2}" \
+            template terrapod helm/terrapod \
+              --set postgresql.url=postgresql+asyncpg://t:t@db:5432/terrapod \
+              --set redis.url=redis://redis:6379 \
+              --set 'api.config.redis.sentinel_hosts[0]=sentinel.example:26379' \
+              --set api.config.redis.sentinel_service_name=mymaster \
+              --set api.config.redis.sentinel_auth=true)
+          grep -Fq 'sentinel_hosts: ["sentinel.example:26379"]' <<< "$rendered"
+          grep -Fq 'sentinel_service_name: "mymaster"' <<< "$rendered"
+          grep -Fq 'sentinel_auth: true' <<< "$rendered"
+
   # ── Config-channel contract (#617) ────────────────────
   # Renders the chart (every values profile) and parses the rendered ConfigMaps
   # THROUGH the real Pydantic config models (Settings / RunnerConfig), asserting

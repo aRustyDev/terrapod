@@ -2671,6 +2671,18 @@ class RedisConfig(BaseModel):
             "host). Required when auth_mode='aws_iam'."
         ),
     )
+    sentinel_hosts: list[str] = Field(
+        default_factory=list,
+        description="Sentinel host:port addresses. Empty keeps the direct Redis URL connection.",
+    )
+    sentinel_service_name: str = Field(
+        default="",
+        description="Sentinel monitored master name; required with sentinel_hosts.",
+    )
+    sentinel_auth: bool = Field(
+        default=False,
+        description="Authenticate to Sentinel with the password from redis_url.",
+    )
 
     @model_validator(mode="after")
     def _require_iam_fields(self) -> "RedisConfig":
@@ -2679,6 +2691,12 @@ class RedisConfig(BaseModel):
             raise ValueError(f"redis.username is required for auth_mode={self.auth_mode!r}")
         if self.auth_mode == "aws_iam" and not self.aws_cache_name:
             raise ValueError("redis.aws_cache_name is required for auth_mode='aws_iam'")
+        if bool(self.sentinel_hosts) != bool(self.sentinel_service_name):
+            raise ValueError("redis.sentinel_hosts and sentinel_service_name must be set together")
+        if self.sentinel_hosts and self.auth_mode != "password":
+            raise ValueError("redis.sentinel_hosts requires auth_mode='password'")
+        if self.sentinel_auth and not self.sentinel_hosts:
+            raise ValueError("redis.sentinel_auth requires sentinel_hosts")
         return self
 
 

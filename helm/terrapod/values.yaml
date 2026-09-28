@@ -172,6 +172,9 @@ api:
       username: ""             # Redis ACL user for IAM (ElastiCache User / IAM user / Entra object id)
       aws_iam_region: ""       # AWS region for ElastiCache IAM signing; aws_iam only
       aws_cache_name: ""       # ElastiCache replication-group / serverless cache id (NOT the endpoint host); aws_iam only
+      sentinel_hosts: []       # Optional Sentinel host:port addresses; requires password auth and service name
+      sentinel_service_name: "" # Sentinel monitored master name; empty keeps the direct Redis URL
+      sentinel_auth: false     # Authenticate to Sentinel with the password from the Redis URL
 
     # Default execution backend and version for new workspaces
     default_execution_backend: tofu  # tofu | terraform

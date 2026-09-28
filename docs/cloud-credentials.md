@@ -657,6 +657,25 @@ The API connects to Redis/Valkey using the URL in `TERRAPOD_REDIS_URL` (sourced 
 
 A fresh token is minted per connection via a redis-py credential provider (offloaded to a thread, so the event loop is never blocked), and the token libraries cache + refresh near expiry. **TLS is required** for IAM Redis auth — use a `rediss://` URL. The URL's userinfo is ignored in IAM mode (the token replaces it), so the `TERRAPOD_REDIS_URL` Secret just needs the host/port (and `rediss://`).
 
+### Sentinel primary discovery (`auth_mode: password`)
+
+For a Redis/Valkey deployment with Sentinel, configure the monitored master name and one or more Sentinel endpoints. Terrapod discovers the current primary for writes and reconnects after failover. The existing Secret-backed `TERRAPOD_REDIS_URL` supplies the data-node password, optional username, database number, and `redis://` or `rediss://` transport. Its host is not used for primary discovery. Keep credentials out of Helm values.
+
+```yaml
+api:
+  config:
+    redis:
+      auth_mode: password
+      sentinel_hosts:
+        - sentinel-0.example:26379
+        - sentinel-1.example:26379
+        - sentinel-2.example:26379
+      sentinel_service_name: mymaster
+      sentinel_auth: true # Use the URL password for Sentinel authentication too
+```
+
+Set `sentinel_auth: false` if the Sentinel endpoints do not require a password. Omit `sentinel_hosts` and `sentinel_service_name` to retain the direct URL connection. Sentinel mode does not support IAM authentication or Redis URL query options.
+
 ### AWS ElastiCache IAM auth (`auth_mode: aws_iam`)
 
 1. **Enable IAM auth on the cache** (Redis OSS 7+ / Valkey, incl. Serverless) and create an [ElastiCache User](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/auth-iam.html) with **Authentication Mode = IAM**, in a User Group attached to the cache. The user name must match the IAM-authenticated identity.

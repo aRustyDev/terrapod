@@ -60,6 +60,9 @@ data:
       username: {{ .Values.api.config.redis.username | default "" | quote }}
       aws_iam_region: {{ .Values.api.config.redis.aws_iam_region | default "" | quote }}
       aws_cache_name: {{ .Values.api.config.redis.aws_cache_name | default "" | quote }}
+      sentinel_hosts: {{ .Values.api.config.redis.sentinel_hosts | default list | toJson }}
+      sentinel_service_name: {{ .Values.api.config.redis.sentinel_service_name | default "" | quote }}
+      sentinel_auth: {{ .Values.api.config.redis.sentinel_auth | default false }}
     {{- end }}
     storage:
       backend: {{ .Values.api.config.storage.backend | quote }}

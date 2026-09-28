@@ -1458,6 +1458,18 @@
             },
             "aws_cache_name": {
               "type": "string"
+            },
+            "sentinel_hosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sentinel_service_name": {
+              "type": "string"
+            },
+            "sentinel_auth": {
+              "type": "boolean"
             }
           }
         },
