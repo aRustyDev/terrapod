@@ -84,6 +84,7 @@ RUN rm -rf /usr/local/lib/python3.13/site-packages/pip \
 COPY services/terrapod/config.py ./terrapod/config.py
 COPY services/terrapod/logging_config.py ./terrapod/logging_config.py
 COPY services/terrapod/http_retry.py ./terrapod/http_retry.py
+COPY services/terrapod/tracing.py ./terrapod/tracing.py
 COPY services/terrapod/runner/ ./terrapod/runner/
 
 # Create non-root user and data directories

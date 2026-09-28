@@ -30,10 +30,12 @@ import signal
 import time
 
 import httpx
+from opentelemetry import trace
 
 from terrapod.config import load_runner_config
 from terrapod.http_retry import arequest_with_retry
 from terrapod.logging_config import configure_logging, get_logger
+from terrapod.tracing import configure_tracing
 
 logger = get_logger(__name__)
 
@@ -665,7 +667,12 @@ class RunnerListener:
             # Launch the Job in the background (fire-and-forget)
             self._active_launches += 1
             try:
-                await self._launch_run(run_id, attrs)
+                with trace.get_tracer(__name__).start_as_current_span(
+                    "listener.launch_run"
+                ) as span:
+                    span.set_attribute("terrapod.run.id", run_id)
+                    span.set_attribute("terrapod.run.phase", attrs.get("phase", "plan"))
+                    await self._launch_run(run_id, attrs)
             finally:
                 self._active_launches -= 1
             launched += 1
@@ -1383,6 +1390,12 @@ def main() -> None:
     configure_logging(json_logs=True, log_level=os.environ.get("LOG_LEVEL", "INFO"))
     logger.info("Starting Terrapod runner listener")
 
+    tracing_provider = configure_tracing("terrapod-listener")
+    if tracing_provider is not None:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+        HTTPXClientInstrumentor().instrument(tracer_provider=tracing_provider)
+
     listener = RunnerListener()
 
     loop = asyncio.new_event_loop()
@@ -1396,6 +1409,8 @@ def main() -> None:
         _shutdown.set()
     finally:
         loop.close()
+        if tracing_provider is not None:
+            tracing_provider.shutdown()
         logger.info("Listener stopped")
 
 
