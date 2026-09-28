@@ -21,6 +21,7 @@ from terrapod.db.session import close_db, get_db_session, init_db
 from terrapod.logging_config import configure_logging, get_logger
 from terrapod.redis.client import close_redis, init_redis
 from terrapod.storage import close_storage, init_storage
+from terrapod.tracing import configure_tracing
 
 from .errors import UPSTREAM_FAILURE_HEADER
 from .health import router as health_router
@@ -586,6 +587,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await close_storage()
     await close_redis()
     await close_db()
+    if app.state.tracing_provider is not None:
+        app.state.tracing_provider.shutdown()
 
 
 _REDOC_HTML = """<!DOCTYPE html>
@@ -663,6 +666,7 @@ layout:"BaseLayout"});</script>
 
 def create_application() -> FastAPI:
     """Create and configure the FastAPI application."""
+    tracing_provider = configure_tracing("terrapod-api")
     app = FastAPI(
         title="Terrapod API",
         description="Terrapod - Open-source Terraform Enterprise replacement",
@@ -672,6 +676,15 @@ def create_application() -> FastAPI:
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
+    app.state.tracing_provider = tracing_provider
+    if tracing_provider is not None:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(
+            app,
+            tracer_provider=tracing_provider,
+            excluded_urls="/health,/ready,/metrics",
+        )
 
     # Custom themed API docs endpoints
     @app.get("/api/docs", include_in_schema=False)

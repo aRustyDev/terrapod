@@ -1,6 +1,21 @@
 # Monitoring
 
-Terrapod exposes Prometheus metrics from two components: the **API server** (FastAPI) and the **web frontend** (Next.js). Metrics cover HTTP requests, run lifecycle, scheduler health, VCS polling, storage operations, authentication, caching, and infrastructure errors.
+Terrapod exposes Prometheus metrics from the **API server** (FastAPI), **web frontend** (Next.js), and **runner listener**. Metrics cover HTTP requests, run lifecycle, scheduler health, VCS polling, storage operations, authentication, caching, and infrastructure errors.
+
+## OTLP traces
+
+API request spans and listener run-launch spans are opt-in. Set
+`OTEL_EXPORTER_OTLP_ENDPOINT` on the API and listener pods to an OTLP gRPC
+collector endpoint, for example `http://otel-collector:4317`. The Helm chart's
+`api.extraEnv` and `listener.extraEnv` values can supply this environment
+variable. The exported service names are `terrapod-api` and
+`terrapod-listener`; listener launch spans carry the run ID and phase. Health,
+readiness, and metrics requests are excluded from API tracing. No exporter is
+created when the endpoint is unset.
+
+Trace export is asynchronous and should be verified in the collector after a
+real request and a queued run. Keep credentials out of span attributes and
+collector URLs.
 
 ---
 

@@ -165,7 +165,7 @@ See [Architecture](architecture.md) for the full breakdown.
 | [Registry Publishing](registry-publishing.md) | Publishing providers/modules with the `terrapod-publish` CLI and the client-signed publish protocol |
 | [Service Catalog](service-catalog.md) | No-code self-service provisioning over the private module registry: blessed catalog items, provider templates, a `catalog_permission` RBAC axis, and a full provision → reconfigure → destroy lifecycle |
 | [Cost Estimation](cost-estimation.md) | Monthly cost of managed infrastructure — a per-plan delta (run) and the current state total (workspace); native cost engine (data) + optional AI layer (estimates unpriced resources, advisories, grounded chat); Cost tab on both pages + MCP tools |
-| [Monitoring](monitoring.md) | Prometheus metrics, scraping, shipped Grafana dashboard + alert rules (with per-alert runbooks) |
+| [Monitoring](monitoring.md) | Prometheus metrics, scraping, shipped Grafana dashboard + alert rules (with per-alert runbooks), and opt-in OTLP traces |
 | [Deployment](deployment.md) | Production Helm deployment, storage backends, scaling |
 | [Scalability](scalability.md) | How Terrapod scales to large workspace counts (stateless API replicas, no leader election, O(page) list reads), a reproducible load-test harness, measured results, and the horizontal-scale Helm profile |
 | [Split-networking deployments](deployment-network-isolation.md) | Three-Ingress model: management / webhook / internal agent path, with split-hostname runner config |
